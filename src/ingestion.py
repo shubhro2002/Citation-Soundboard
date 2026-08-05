@@ -38,7 +38,7 @@ def ingest_pdf_to_index(pdf_path: str, persist_dir: str = "./storage") -> Vector
     return index
 
 if __name__ == "__main__":
-    SAMPLE_PDF = "../data/sample.pdf" 
+    SAMPLE_PDF = "./data/Sample_Data.pdf" 
     
     if os.path.exists(SAMPLE_PDF):
         index = ingest_pdf_to_index(SAMPLE_PDF)

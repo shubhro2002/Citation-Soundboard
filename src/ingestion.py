@@ -1,6 +1,6 @@
 import os
 import pdfplumber
-from llama_index.core import Document, SimpleDirectoryReader, VectorStoreIndex, Settings
+from llama_index.core import Document, VectorStoreIndex, Settings
 from llama_index.core.node_parser import SentenceSplitter
 from llama_index.embeddings.ollama import OllamaEmbedding
 from llama_index.llms.ollama import Ollama

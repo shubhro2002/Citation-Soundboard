@@ -1,5 +1,6 @@
 import os
-from typing import TypedDict
+from typing import TypedDict, cast
+from typing_extensions import NotRequired
 from langgraph.graph import StateGraph, END
 from llama_index.core import StorageContext, load_index_from_storage, Settings
 from llama_index.embeddings.ollama import OllamaEmbedding
@@ -14,9 +15,9 @@ Settings.llm = Ollama(model="llama3.2", request_timeout=360.0)
 
 class GraphState(TypedDict):
     topic: str
-    context: str
-    draft: str
-    final_script: PodcastScript
+    context: NotRequired[str]
+    draft: NotRequired[str]
+    final_script: NotRequired[PodcastScript]
 
 def retrieve_node(state: GraphState):
     print("--- RETRIEVING CONTEXT ---")
@@ -38,7 +39,7 @@ def retrieve_node(state: GraphState):
 
 def draft_node(state: GraphState):
     print("--- DRAFTING SCRIPT ---")
-    context = state["context"]
+    context = state.get("context", "")
 
     llm =  ChatOllama(model="llama3.2", temperature=0.7)
     prompt = ChatPromptTemplate.from_messages([
@@ -53,8 +54,8 @@ def draft_node(state: GraphState):
 
 def evaluate_node(state: GraphState):
     print("--- EVALUATING GROUNDEDNESS ---")
-    context = state["context"]
-    draft = state["draft"]
+    context = state.get("context", "")
+    draft = state.get("draft", "")
     
     eval_chain = get_evaluator_chain()
     structured_script = eval_chain.invoke({"context": context, "script": draft})
@@ -80,7 +81,10 @@ if __name__ == "__main__":
         print("Error: No ./storage folder found. Run ingestion.py first!")
     else:
         app = build_workflow()
-        inputs = {"topic": "Acme Corp Q2 financial expenses and server farm acquisition"}
+        inputs = cast(
+            GraphState, 
+            {"topic": "Acme Corp Q2 financial expenses and server farm acquisition"}
+        )
         print(f"Starting graph with topic: {inputs['topic']}")
 
         final_state = app.invoke(inputs)

@@ -1,6 +1,7 @@
 import os
-import pyttsx3
-from typing import cast
+import soundfile as sf
+from typing import cast, Any
+from kokoro import KPipeline
 from pydub import AudioSegment
 from pydub.generators import Sine
 
@@ -14,38 +15,38 @@ def generate_ding() -> AudioSegment:
 def generate_podcast_audio(script_lines, output_filename="podcast_output.wav"):
     print("--- SYNTHESIZING AUDIO ---")
 
+    pipeline = KPipeline(lang_code="a")
+
+    voice_map = {
+        "Host A": "af_sarah",
+        "Host B": "am_michael"
+    }
+
     final_audio = AudioSegment.empty()
     ding_sound = generate_ding()
 
     for i, line in enumerate(script_lines):
-        print(f"Generating audio for {line.speaker}...")
+        print(f"Generating Kokoro audio for {line.speaker}...")
 
-        engine = pyttsx3.init()
-        voices = cast(list, engine.getProperty('voices'))
+        # Get the assigned voice, default to 'af_heart' if speaker isn't mapped
+        voice = voice_map.get(line.speaker, "af_heart")
 
-        voice_map = {
-                "Host A": voices[0].id if len(voices) > 0 else None,
-                "Host B": voices[1].id if len(voices) > 1 else voices[0].id
-        }
+        generator = pipeline(line.text, voice=voice, speed =1)
 
-        engine.setProperty('voice', voice_map.get(line.speaker, voices[0].id))
+        for _, _, audio in generator:
+            temp_filename = f"temp_line_{i}.wav"
 
-        temp_filename = f"temp_line_{i}.wav"
-        engine.save_to_file(line.text, temp_filename)
-        engine.runAndWait()
+            # Save the numpy array to a WAV file using soundfile at 24000Hz
+            sf.write(temp_filename, cast(Any, audio), 24000)
 
-        del engine  # Free up resources
+            # Load it back into our pydub workflow
+            line_audio = AudioSegment.from_file(temp_filename, format="wav")
+            if line.category.value in ["VERBATIM_FACT", "INFERENCE"]: 
+                final_audio += ding_sound
+            final_audio += line_audio
 
-        line_audio = AudioSegment.from_file(temp_filename, format="wav")
-        if line.category.value in ["VERBATIM_FACT", "INFERENCE"]: 
-            final_audio += ding_sound
-
-        final_audio += line_audio
-
-        os.remove(temp_filename)
-
-    print(f"--- STITCHING COMPLETE ---")
-    # Export the final combined audio
+            os.remove(temp_filename)  # Clean up the temporary file
+        print(f"--- STITCHING COMPLETE ---")
     final_audio.export(output_filename, format="wav")
     print(f"Podcast saved locally to {output_filename}")
 
@@ -69,5 +70,4 @@ if __name__ == "__main__":
             reasoning="Data point"
         )
     ]
-    
     generate_podcast_audio(mock_lines, "test_podcast.wav")

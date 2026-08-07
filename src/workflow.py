@@ -8,7 +8,7 @@ from llama_index.llms.ollama import Ollama
 from langchain_ollama import ChatOllama
 from langchain_core.prompts import ChatPromptTemplate
 
-from evaluator import get_evaluator_chain, PodcastScript
+from .evaluator import get_evaluator_chain, PodcastScript
 
 Settings.embed_model = OllamaEmbedding(model_name="nomic-embed-text")
 Settings.llm = Ollama(model="llama3.2", request_timeout=360.0)

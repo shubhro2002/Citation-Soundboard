@@ -1,5 +1,6 @@
 import os
-from typing import TypedDict, cast
+from pydantic import BaseModel, Field
+from typing import TypedDict, cast, List
 from typing_extensions import NotRequired
 from langgraph.graph import StateGraph, END
 from llama_index.core import StorageContext, load_index_from_storage, Settings
@@ -15,20 +16,49 @@ Settings.llm = Ollama(model="llama3.2", request_timeout=360.0)
 
 class GraphState(TypedDict):
     topic: str
+    search_query: NotRequired[str]
     context: NotRequired[str]
     draft: NotRequired[str]
     final_script: NotRequired[PodcastScript]
 
+class DraftLine(BaseModel):
+    speaker: str = Field(description="Host A or Host B")
+    text: str = Field(description="The spoken dialogue")
+
+class DraftScript(BaseModel):
+    lines: List[DraftLine] = Field(
+        description="Exactly 4 lines of back-and-forth dialogue", 
+        min_length=4, 
+        max_length=4
+    )
+
+def rewrite_node(state: GraphState):
+    print("--- TRANSFORMING QUERY ---")
+    topic = state["topic"]
+
+    llm = ChatOllama(model="llama3.2", temperature=0.2)
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", "You are an expert search query optimizer for a vector database. Your goal is to take a user's conversational topic and rewrite it into a specific, keyword-rich search query. Output ONLY the optimized search query string, with no introductory text or quotes."),
+        ("human", "USER TOPIC:\n{topic}\n\nSEARCH QUERY:")
+    ])
+    chain = prompt | llm
+    response = chain.invoke({"topic": topic})
+    
+    optimized_query = response.content.strip()
+    print(f"  -> Optimized Query: {optimized_query}")
+    
+    return {"search_query": optimized_query}
+
 def retrieve_node(state: GraphState):
     print("--- RETRIEVING CONTEXT ---")
-    topic = state["topic"]
+    query = state.get("search_query", state["topic"])  # Use search_query if available, else fallback to topic
 
     # Load the index from storage
     storage_context = StorageContext.from_defaults(persist_dir="./storage")
     index = load_index_from_storage(storage_context)
 
     query_engine = index.as_query_engine(similarity_top_k=3)
-    response = query_engine.query(topic)
+    response = query_engine.query(query)
 
     context_str = ""
     for node in response.source_nodes:
@@ -42,15 +72,20 @@ def draft_node(state: GraphState):
     context = state.get("context", "")
 
     llm =  ChatOllama(model="llama3.2", temperature=0.7)
+    structured_llm = llm.with_structured_output(DraftScript)
     prompt = ChatPromptTemplate.from_messages([
-        ("system", "You are a podcast writer. Write a short, engaging 4-line back-and-forth dialogue between 'Host A' and 'Host B' about the provided context. Include at least one specific metric or fact from the text."),
+        ("system", "You are a podcast writer. Write an engaging 4-line back-and-forth dialogue between 'Host A' and 'Host B' using the provided context. You must include at least one specific metric or fact. Do not repeat lines. Include at least one specific metric or fact from the text."),
         ("human", "CONTEXT:\n{context}\n\nDRAFT SCRIPT:")
         ])
 
-    chain = prompt | llm
+    chain = prompt | structured_llm
     draft_response = chain.invoke({"context": context})
 
-    return {"draft": draft_response}
+    draft_str = ""
+    for line in draft_response.lines:
+        draft_str += f"{line.speaker}: {line.text}\n"
+        
+    return {"draft": draft_str}
 
 def evaluate_node(state: GraphState):
     print("--- EVALUATING GROUNDEDNESS ---")
@@ -65,11 +100,13 @@ def evaluate_node(state: GraphState):
 def build_workflow():
     workflow = StateGraph(GraphState)
 
+    workflow.add_node("rewrite", rewrite_node)
     workflow.add_node("retrieve", retrieve_node)
     workflow.add_node("draft", draft_node)
     workflow.add_node("evaluate", evaluate_node)
 
-    workflow.set_entry_point("retrieve")
+    workflow.set_entry_point("rewrite")
+    workflow.add_edge("rewrite", "retrieve")
     workflow.add_edge("retrieve", "draft")
     workflow.add_edge("draft", "evaluate")
     workflow.add_edge("evaluate", END)

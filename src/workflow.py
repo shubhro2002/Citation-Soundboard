@@ -32,19 +32,23 @@ class DraftScript(BaseModel):
         max_length=4
     )
 
+class OptimizedSearch(BaseModel):
+    query: str = Field(description="The optimized keywords. CRITICAL: Do NOT add years or dates unless explicitly provided.")
+
 def rewrite_node(state: GraphState):
     print("--- TRANSFORMING QUERY ---")
     topic = state["topic"]
 
     llm = ChatOllama(model="llama3.2", temperature=0.2)
+    structured_llm = llm.with_structured_output(OptimizedSearch)
     prompt = ChatPromptTemplate.from_messages([
         ("system", "You are an expert search query optimizer for a vector database. Your goal is to take a user's conversational topic and rewrite it into a specific, keyword-rich search query. Output ONLY the optimized search query string, with no introductory text or quotes."),
         ("human", "USER TOPIC:\n{topic}\n\nSEARCH QUERY:")
     ])
-    chain = prompt | llm
+    chain = prompt | structured_llm
     response = chain.invoke({"topic": topic})
     
-    optimized_query = response.content.strip()
+    optimized_query = response.query
     print(f"  -> Optimized Query: {optimized_query}")
     
     return {"search_query": optimized_query}

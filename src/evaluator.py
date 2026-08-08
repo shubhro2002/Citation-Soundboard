@@ -14,7 +14,7 @@ class EvaluatedLine(BaseModel):
     text: str = Field(description="The actual spoken text of the script line")
     category: LineCategory = Field(description="Classification of the text groundedness")
     page_citation: Optional[int] = Field(
-        description="Page number from the source document if VERBATIM_FACT, else null"
+        description="If VERBATIM_FACT, extract the integer page number from the [Page X] tags in the source context. Else, output null."
     )
     reasoning: str = Field(description="Brief, one-sentence explanation of why this category was chosen")
 

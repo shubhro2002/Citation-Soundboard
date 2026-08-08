@@ -79,7 +79,7 @@ def draft_node(state: GraphState):
     llm =  ChatOllama(model="llama3.2", temperature=0.7)
     structured_llm = llm.with_structured_output(DraftScript)
     prompt = ChatPromptTemplate.from_messages([
-        ("system", "You are a podcast writer. Write an engaging 4-line back-and-forth dialogue between 'Host A' and 'Host B' using the provided context. You must include at least one specific metric or fact. Do not repeat lines. Include at least one specific metric or fact from the text."),
+        ("system", "You are a podcast writer. Write an engaging 4-line back-and-forth dialogue between 'Host A' and 'Host B' using the provided context. You must include at least one specific metric or fact. Do not repeat lines."),
         ("human", "CONTEXT:\n{context}\n\nDRAFT SCRIPT:")
     ])
 

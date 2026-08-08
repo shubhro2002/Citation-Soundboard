@@ -10,13 +10,23 @@ class LineCategory(str, Enum):
     OPINION = "OPINION"
 
 class EvaluatedLine(BaseModel):
-    speaker: str = Field(description="The host speaking (e.g., 'Host A' or 'Host B')")
-    text: str = Field(description="The actual spoken text of the script line")
-    category: LineCategory = Field(description="Classification of the text groundedness")
-    page_citation: Optional[int] = Field(
-        description="If VERBATIM_FACT, extract the integer page number from the [Page X] tags in the source context. Else, output null."
+    speaker: str = Field(description="Exact speaker from the draft (Do not change)")
+    text: str = Field(description="Exact text from the draft (CRITICAL: Do not change a single word).")
+
+    # Force the model to think and verify first
+    reasoning: str = Field(
+        description="Write a full English sentence explaining if the text contains hard metrics from the source. Do NOT output the category name here."
     )
-    reasoning: str = Field(description="Brief, one-sentence explanation of why this category was chosen")
+
+    # Now the model can accurately classify based on its own reasoning
+    category: LineCategory = Field(
+        description="Classification of the text groundedness. Must be one of: VERBATIM_FACT, INFERENCE, OPINION."
+    )
+
+    # Finally, extract the page number
+    page_citation: Optional[int] = Field(
+        description="If VERBATIM_FACT, extract strictly the number following the [Page X] tag at the start of the chunk. Else, output null."
+    )
 
 class PodcastScript(BaseModel):
     line_1: EvaluatedLine = Field(description="Evaluation of line 1")

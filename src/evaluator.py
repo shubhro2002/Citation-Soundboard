@@ -35,14 +35,15 @@ def get_evaluator_chain():
     # System prompt directing the evaluator's behavior
     prompt = ChatPromptTemplate.from_messages([
         ("system", """You are an expert AI self-evaluator enforcing strict groundedness in a podcast script. 
-        You will be provided with SOURCE CONTEXT from a document, and a DRAFT SCRIPT.
-        
-        Analyze every line of the script and classify it into one of these categories:
-        - VERBATIM_FACT: The line contains hard data, metrics, or facts explicitly stated in the source.
-        - INFERENCE: The line connects dots or makes logical assumptions based on the source.
-        - OPINION: The line is host banter, jokes, or subjective commentary not found in the source.
-        
-        You must cite the source page number for VERBATIM_FACTs."""),
+                      You will be provided with SOURCE CONTEXT containing page tags like '[Page 1]: text...', and a DRAFT SCRIPT.
+
+                      Analyze every line of the script and classify it:
+                      - VERBATIM_FACT: Hard data, metrics, or facts explicitly stated in the source.
+                      - INFERENCE: Logical assumptions or connections based on the source.
+                      - OPINION: Host banter, questions, or subjective commentary.
+
+                      CRITICAL CITATION RULE:
+                      For every VERBATIM_FACT line, you MUST look at the '[Page X]' tag in the SOURCE CONTEXT where that fact appears, and set 'page_citation' to that integer (e.g., 1 or 2). For INFERENCE or OPINION, set 'page_citation' to null."""),
         ("human", "SOURCE CONTEXT:\n{context}\n\nDRAFT SCRIPT:\n{script}")
     ])
     

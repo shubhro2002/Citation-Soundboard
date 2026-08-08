@@ -26,11 +26,10 @@ class DraftLine(BaseModel):
     text: str = Field(description="The spoken dialogue")
 
 class DraftScript(BaseModel):
-    lines: List[DraftLine] = Field(
-        description="Exactly 4 lines of back-and-forth dialogue", 
-        min_length=4, 
-        max_length=4
-    )
+    line_1: DraftLine = Field(description="The first line of dialogue")
+    line_2: DraftLine = Field(description="The second line of dialogue")
+    line_3: DraftLine = Field(description="The third line of dialogue")
+    line_4: DraftLine = Field(description="The fourth line of dialogue")
 
 class OptimizedSearch(BaseModel):
     query: str = Field(description="The optimized keywords. CRITICAL: Do NOT add years or dates unless explicitly provided.")
@@ -46,7 +45,7 @@ def rewrite_node(state: GraphState):
         ("human", "USER TOPIC:\n{topic}\n\nSEARCH QUERY:")
     ])
     chain = prompt | structured_llm
-    response = chain.invoke({"topic": topic})
+    response = cast(OptimizedSearch, chain.invoke({"topic": topic}))
     
     optimized_query = response.query
     print(f"  -> Optimized Query: {optimized_query}")
@@ -68,7 +67,9 @@ def retrieve_node(state: GraphState):
     for node in response.source_nodes:
         page = node.metadata.get('page_number', 'Unknown')
         context_str += f"[Page {page}]: {node.text}\n\n"
-        
+
+    # Debug
+    print(f"\n--- DEBUG RETRIEVED CONTEXT ---\n{context_str}--------------------------------\n")
     return {"context": context_str}
 
 def draft_node(state: GraphState):
@@ -80,14 +81,17 @@ def draft_node(state: GraphState):
     prompt = ChatPromptTemplate.from_messages([
         ("system", "You are a podcast writer. Write an engaging 4-line back-and-forth dialogue between 'Host A' and 'Host B' using the provided context. You must include at least one specific metric or fact. Do not repeat lines. Include at least one specific metric or fact from the text."),
         ("human", "CONTEXT:\n{context}\n\nDRAFT SCRIPT:")
-        ])
+    ])
 
     chain = prompt | structured_llm
-    draft_response = chain.invoke({"context": context})
+    draft_response = cast(DraftScript, chain.invoke({"context": context}))
 
-    draft_str = ""
-    for line in draft_response.lines:
-        draft_str += f"{line.speaker}: {line.text}\n"
+    draft_str = (
+        f"{draft_response.line_1.speaker}: {draft_response.line_1.text}\n"
+        f"{draft_response.line_2.speaker}: {draft_response.line_2.text}\n"
+        f"{draft_response.line_3.speaker}: {draft_response.line_3.text}\n"
+        f"{draft_response.line_4.speaker}: {draft_response.line_4.text}\n"
+    )
         
     return {"draft": draft_str}
 

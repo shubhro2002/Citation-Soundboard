@@ -1,6 +1,7 @@
 import os
+import operator
 from pydantic import BaseModel, Field
-from typing import TypedDict, cast, List
+from typing import TypedDict, cast, List, Annotated
 from typing_extensions import NotRequired
 from langgraph.graph import StateGraph, END
 from llama_index.core import StorageContext, load_index_from_storage, Settings
@@ -16,10 +17,12 @@ Settings.llm = Ollama(model="llama3.2", request_timeout=360.0)
 
 class GraphState(TypedDict):
     topic: str
+    outline: List[str]               # Holds the generated subtopics
+    current_index: int               # Tracks our position in the loop
     search_query: NotRequired[str]
     context: NotRequired[str]
     draft: NotRequired[str]
-    final_script: NotRequired[PodcastScript]
+    full_script: Annotated[List[dict], operator.add]
 
 class DraftLine(BaseModel):
     speaker: str = Field(description="Host A or Host B")
@@ -34,21 +37,49 @@ class DraftScript(BaseModel):
 class OptimizedSearch(BaseModel):
     query: str = Field(description="The optimized keywords. CRITICAL: Do NOT add years or dates unless explicitly provided.")
 
-def rewrite_node(state: GraphState):
-    print("--- TRANSFORMING QUERY ---")
-    topic = state["topic"]
+class PodcastOutline(BaseModel):
+    subtopics: List[str] = Field(
+        description="A sequential list of 3 specific subtopics to discuss.",
+        min_length=3, 
+        max_length=3
+    )
 
-    llm = ChatOllama(model="llama3.2", temperature=0.2)
+# 1.2 Node: Generate the Episode Outline
+def outline_node(state: GraphState):
+    print("\n=== GENERATING PODCAST OUTLINE ===")
+    topic = state["topic"]
+    
+    llm = ChatOllama(model="llama3.2", temperature=0.6)
+    structured_llm = llm.with_structured_output(PodcastOutline)
+    
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", "You are a podcast producer. Break the given topic into a logical, sequential 3-part outline. Make the subtopics highly specific so they can be used to search a document database."),
+        ("human", "Topic: {topic}")
+    ])
+    
+    response = cast(PodcastOutline, (prompt | structured_llm).invoke({"topic": topic}))
+    
+    print("  -> Generated Subtopics:")
+    for i, sub in enumerate(response.subtopics):
+        print(f"     {i+1}. {sub}")
+        
+    # Initialize the loop counter at 0, and the script as an empty list
+    return {"outline": response.subtopics, "current_index": 0, "full_script": []}
+
+def rewrite_node(state: GraphState):
+    current_subtopic = state["outline"][state["current_index"]]
+    print(f"\n--- TRANSFORMING QUERY (Subtopic {state['current_index'] + 1}) ---")
+    print(f"  -> Target: {current_subtopic}")
+
+    llm = ChatOllama(model="llama3.2", temperature=0.0)
     structured_llm = llm.with_structured_output(OptimizedSearch)
     prompt = ChatPromptTemplate.from_messages([
-        ("system", "You are an expert search query optimizer for a vector database. Your goal is to take a user's conversational topic and rewrite it into a specific, keyword-rich search query. Output ONLY the optimized search query string, with no introductory text or quotes."),
-        ("human", "USER TOPIC:\n{topic}\n\nSEARCH QUERY:")
-    ])
-    chain = prompt | structured_llm
-    response = cast(OptimizedSearch, chain.invoke({"topic": topic}))
-    
+        ("system", "Extract only the core entities and keywords from the subtopic to create a dense vector search query. You are strictly forbidden from adding dates or years if they are not explicitly present."),
+        ("human", "Subtopic: {topic}")
+    ])  
+    response = cast(OptimizedSearch, (prompt | structured_llm).invoke({"topic": current_subtopic}))
     optimized_query = response.query
-    print(f"  -> Optimized Query: {optimized_query}")
+    print(f"  -> Optimized Keywords: {optimized_query}")
     
     return {"search_query": optimized_query}
 
@@ -100,24 +131,40 @@ def evaluate_node(state: GraphState):
     context = state.get("context", "")
     draft = state.get("draft", "")
     
-    eval_chain = get_evaluator_chain()
-    structured_script = eval_chain.invoke({"context": context, "script": draft})
-    
-    return {"final_script": structured_script}
+    chain = get_evaluator_chain()
+    eval_response = cast(PodcastScript, chain.invoke({"context": context, "script": draft}))
+    evaluated_lines = [line.dict() for line in eval_response.lines]
+
+    next_index = state["current_index"] + 1
+
+    return {"full_script": evaluated_lines, "current_index": next_index}
+
+def route_workflow(state: GraphState):
+    # If we haven't processed all subtopics, loop back to the rewrite node
+    if state["current_index"] < len(state["outline"]):
+        return "rewrite"
+    # Otherwise, finish the graph
+    return END
 
 def build_workflow():
     workflow = StateGraph(GraphState)
 
+    workflow.add_node("outline", outline_node)
     workflow.add_node("rewrite", rewrite_node)
     workflow.add_node("retrieve", retrieve_node)
     workflow.add_node("draft", draft_node)
     workflow.add_node("evaluate", evaluate_node)
 
-    workflow.set_entry_point("rewrite")
+    workflow.set_entry_point("outline")
+    workflow.add_edge("outline", "rewrite")
     workflow.add_edge("rewrite", "retrieve")
     workflow.add_edge("retrieve", "draft")
     workflow.add_edge("draft", "evaluate")
-    workflow.add_edge("evaluate", END)
+    workflow.add_conditional_edges(
+        "evaluate", 
+        route_workflow, 
+        {"rewrite": "rewrite", END: END}
+    )
 
     return workflow.compile()
 
@@ -135,7 +182,7 @@ if __name__ == "__main__":
         final_state = app.invoke(inputs)
 
         print("\n=== FINAL EVALUATED SCRIPT ===")
-        if "final_script" in final_state and final_state["final_script"]:
-            for line in final_state["final_script"].lines:
-                print(f"[{line.category}] {line.speaker} (Page {line.page_citation}): {line.text}")
-                print(f"  -> Reasoning: {line.reasoning}\n")
+        if "full_script" in final_state and final_state["full_script"]:
+            for line in final_state["full_script"]:
+                print(f"[{line['category']}] {line['speaker']} (Page {line['page_citation']}): {line['text']}")
+                print(f"  -> Reasoning: {line['reasoning']}\n")

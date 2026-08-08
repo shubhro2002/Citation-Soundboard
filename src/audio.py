@@ -26,12 +26,12 @@ def generate_podcast_audio(script_lines, output_filename="podcast_output.wav"):
     ding_sound = generate_ding()
 
     for i, line in enumerate(script_lines):
-        print(f"Generating Kokoro audio for {line.speaker}...")
+        print(f"Generating Kokoro audio for {line['speaker']}...")
 
         # Get the assigned voice, default to 'af_heart' if speaker isn't mapped
-        voice = voice_map.get(line.speaker, "af_heart")
+        voice = voice_map.get(line['speaker'], "af_heart")
 
-        generator = pipeline(line.text, voice=voice, speed =1)
+        generator = pipeline(line['text'], voice=voice, speed =1)
 
         for _, _, audio in generator:
             temp_filename = f"temp_line_{i}.wav"
@@ -41,7 +41,7 @@ def generate_podcast_audio(script_lines, output_filename="podcast_output.wav"):
 
             # Load it back into our pydub workflow
             line_audio = AudioSegment.from_file(temp_filename, format="wav")
-            if line.category.value in ["VERBATIM_FACT", "INFERENCE"]: 
+            if line['category'] in ["VERBATIM_FACT", "INFERENCE"]: 
                 final_audio += ding_sound
             final_audio += line_audio
 

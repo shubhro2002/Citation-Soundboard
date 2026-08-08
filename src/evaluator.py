@@ -48,13 +48,20 @@ def get_evaluator_chain():
         ("system", """You are an expert AI self-evaluator enforcing strict groundedness in a podcast script. 
 You will be provided with SOURCE CONTEXT containing page tags like '[Page 1]: text...', and a DRAFT SCRIPT.
 
-Analyze every line of the script and classify it:
-- VERBATIM_FACT: Hard data, metrics, or facts explicitly stated in the source, EVEN IF they are wrapped in conversational framing (e.g., "The numbers show a 45% increase"). If the core data point is real, it is a fact.
+Classify exactly 4 lines of the script.
+- VERBATIM_FACT: Hard data, metrics, or facts explicitly stated in the source.
 - INFERENCE: Logical assumptions or connections based on the source.
-- OPINION: Host banter, questions, or subjective commentary that contains no hard source data.
+- OPINION: Host banter, questions, or subjective commentary.
 
-CRITICAL CITATION RULE:
-For every VERBATIM_FACT line, you MUST look at the '[Page X]' tag in the SOURCE CONTEXT where that fact appears, and set 'page_citation' to that integer. For INFERENCE or OPINION, set 'page_citation' to null."""),
+CRITICAL RULES:
+1. For 'step_1_explanation_sentence', write ONLY a normal English sentence. Do NOT use the words VERBATIM_FACT, INFERENCE, or OPINION here.
+2. For 'step_3_page_citation', you MUST extract the integer from the '[Page X]' tag at the very top of the chunk. Do NOT use chapter or section numbers.
+
+=== EXAMPLE OF PERFECT OUTPUT ===
+"step_1_explanation_sentence": "The text explicitly states the 60M model dropped by -0.025.",
+"step_2_category": "VERBATIM_FACT",
+"step_3_page_citation": 29
+================================="""),
         ("human", "SOURCE CONTEXT:\n{context}\n\nDRAFT SCRIPT:\n{script}")
     ])
     

@@ -19,7 +19,14 @@ class EvaluatedLine(BaseModel):
     reasoning: str = Field(description="Brief, one-sentence explanation of why this category was chosen")
 
 class PodcastScript(BaseModel):
-    lines: List[EvaluatedLine] = Field(description="The sequential list of evaluated podcast lines")
+    line_1: EvaluatedLine = Field(description="Evaluation of line 1")
+    line_2: EvaluatedLine = Field(description="Evaluation of line 2")
+    line_3: EvaluatedLine = Field(description="Evaluation of line 3")
+    line_4: EvaluatedLine = Field(description="Evaluation of line 4")
+
+    @property
+    def lines(self):
+        return [self.line_1, self.line_2, self.line_3, self.line_4]
 
 def get_evaluator_chain():
     """

@@ -9,6 +9,8 @@ from llama_index.embeddings.ollama import OllamaEmbedding
 from llama_index.llms.ollama import Ollama
 from langchain_ollama import ChatOllama
 from langchain_core.prompts import ChatPromptTemplate
+from llama_index.retrievers.bm25 import BM25Retriever
+from llama_index.core.retrievers import QueryFusionRetriever
 
 from .evaluator import get_evaluator_chain, PodcastScript
 
@@ -84,23 +86,55 @@ def rewrite_node(state: GraphState):
     return {"search_query": optimized_query}
 
 def retrieve_node(state: GraphState):
-    print("--- RETRIEVING CONTEXT ---")
-    query = state.get("search_query", state["topic"])  # Use search_query if available, else fallback to topic
-
-    # Load the index from storage
+    current_subtopic = state["outline"][state["current_index"]]
+    query = state.get("search_query", current_subtopic)
+    
+    print(f"\n--- RETRIEVING CONTEXT FOR: {query} ---")
+    
+    # Load the existing Index
     storage_context = StorageContext.from_defaults(persist_dir="./storage")
     index = load_index_from_storage(storage_context)
-
-    query_engine = index.as_query_engine(similarity_top_k=3)
-    response = query_engine.query(query)
-
+    
+    # Initialize Dense Vector Retriever
+    vector_retriever = index.as_retriever(similarity_top_k=5)
+    
+    # Initialize Sparse BM25 Retriever
+    bm25_retriever = BM25Retriever.from_defaults(
+        docstore=index.docstore, 
+        similarity_top_k=5
+    )
+    
+    # Combine via Reciprocal Rank Fusion
+    hybrid_retriever = QueryFusionRetriever(
+        [vector_retriever, bm25_retriever],
+        similarity_top_k=5,
+        num_queries=1,
+        mode="reciprocal_rerank",  # type: ignore
+        use_async=False,
+    )
+    
+    # Execute Hybrid Search
+    nodes = hybrid_retriever.retrieve(query)
+    
     context_str = ""
-    for node in response.source_nodes:
-        page = node.metadata.get('page_number', 'Unknown')
-        context_str += f"[Page {page}]: {node.text}\n\n"
-
-    # Debug
-    print(f"\n--- DEBUG RETRIEVED CONTEXT ---\n{context_str}--------------------------------\n")
+    print("\n--- DEBUG RETRIEVED CONTEXT ---")
+    for node in nodes:
+        # Access the underlying TextNode metadata dictionary safely
+        node_obj = node.node if hasattr(node, "node") else node
+        metadata = getattr(node_obj, "metadata", {})
+        
+        # Check all standard LlamaIndex page number keys
+        page_num = (
+            metadata.get("page_label") or 
+            metadata.get("page_number") or 
+            metadata.get("page_num") or 
+            "Unknown"
+        )
+        
+        preview = node_obj.get_content()[:150].replace('\n', ' ')
+        print(f"[Page {page_num}]: {preview}...\n")
+        context_str += f"[Page {page_num}]: {node_obj.get_content()}\n\n"
+        
     return {"context": context_str}
 
 def draft_node(state: GraphState):

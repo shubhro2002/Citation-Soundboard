@@ -48,8 +48,8 @@ def run_citation_soundboard(pdf_path: str, topic: str, output_audio: str = "podc
 
 if __name__ == "__main__":
     # Example usage
-    SAMPLE_PDF = "./data/Sample_Data.pdf"
-    TOPIC = "Acme Corp Q2 financial expenses and server farm acquisition"
+    SAMPLE_PDF = "./data/thesis.pdf"
+    TOPIC = "Explain Lexical Camouflage and why the Semantic Integrity Critic failed to detect hallucinations."
     OUTPUT_AUDIO = "podcast_output.wav"
 
     run_citation_soundboard(SAMPLE_PDF, TOPIC, OUTPUT_AUDIO)

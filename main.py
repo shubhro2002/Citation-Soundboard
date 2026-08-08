@@ -37,9 +37,15 @@ def run_citation_soundboard(pdf_path: str, topic: str, output_audio: str = "podc
         
     print("\n=== FULL GENERATED & EVALUATED SCRIPT ===")
     for line in final_script_data:
-        # Pydantic dicts use dict lookup instead of dot notation
-        print(f"[{line['category']}] {line['speaker']} (Page {line['page_citation']}): {line['text']}")
-        print(f"  -> Reasoning: {line['reasoning']}")
+        # Safe dict lookup using the explicit new schema keys
+        category = line.get('step_2_category', 'UNKNOWN')
+        speaker = line.get('speaker', 'Unknown')
+        page = line.get('step_3_page_citation', 'None')
+        text = line.get('text', '')
+        reasoning = line.get('step_1_explanation_sentence', 'None')
+
+        print(f"[{category}] {speaker} (Page {page}): {text}")
+        print(f"  -> Reasoning: {reasoning}")
         
     print("\n[3/3] Synthesizing audio and stitching soundboard...")
     generate_podcast_audio(final_script_data, "podcast_output.wav")

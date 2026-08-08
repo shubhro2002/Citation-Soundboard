@@ -26,12 +26,16 @@ def generate_podcast_audio(script_lines, output_filename="podcast_output.wav"):
     ding_sound = generate_ding()
 
     for i, line in enumerate(script_lines):
-        print(f"Generating Kokoro audio for {line['speaker']}...")
+        speaker = line.get('speaker', 'Host A')
+        text = line.get('text', '')
+        category = line.get('step_2_category', 'OPINION')
+
+        print(f"Generating Kokoro audio for {speaker}...")
 
         # Get the assigned voice, default to 'af_heart' if speaker isn't mapped
-        voice = voice_map.get(line['speaker'], "af_heart")
+        voice = voice_map.get(speaker, "af_heart")
 
-        generator = pipeline(line['text'], voice=voice, speed =1)
+        generator = pipeline(text, voice=voice, speed =1)
 
         for _, _, audio in generator:
             temp_filename = f"temp_line_{i}.wav"
@@ -41,33 +45,37 @@ def generate_podcast_audio(script_lines, output_filename="podcast_output.wav"):
 
             # Load it back into our pydub workflow
             line_audio = AudioSegment.from_file(temp_filename, format="wav")
-            if line['category'] in ["VERBATIM_FACT", "INFERENCE"]: 
+            
+            # 2. UPDATED: Check the newly mapped 'category' variable for the ding
+            if category in ["VERBATIM_FACT", "INFERENCE"]: 
                 final_audio += ding_sound
             final_audio += line_audio
 
             os.remove(temp_filename)  # Clean up the temporary file
+            
         print(f"--- STITCHING COMPLETE ---")
+        
     final_audio.export(output_filename, format="wav")
     print(f"Podcast saved locally to {output_filename}")
 
 if __name__ == "__main__":
     # Mocking a script line to test the audio engine independently
-    from evaluator import EvaluatedLine, LineCategory
+    from evaluator import EvaluatedLine
     
     mock_lines = [
         EvaluatedLine(
             speaker="Host A", 
             text="Welcome to the Citation Soundboard.", 
-            category=LineCategory.OPINION, 
-            page_citation=None, 
-            reasoning="Intro"
-        ),
+            step_2_category="OPINION", 
+            step_3_page_citation=None, 
+            step_1_explanation_sentence="Intro"
+        ).dict(),
         EvaluatedLine(
             speaker="Host B", 
             text="Revenue increased by 45 percent.", 
-            category=LineCategory.INFERENCE, 
-            page_citation=1, 
-            reasoning="Data point"
-        )
+            step_2_category="INFERENCE", 
+            step_3_page_citation=1, 
+            step_1_explanation_sentence="Data point"
+        ).dict()
     ]
     generate_podcast_audio(mock_lines, "test_podcast.wav")

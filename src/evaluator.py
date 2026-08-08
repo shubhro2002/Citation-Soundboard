@@ -1,31 +1,25 @@
-from typing import List, Optional
-from enum import Enum
+from typing import Literal, Optional
 from pydantic import BaseModel, Field
 from langchain_ollama import ChatOllama
 from langchain_core.prompts import ChatPromptTemplate
-
-class LineCategory(str, Enum):
-    VERBATIM_FACT = "VERBATIM_FACT"
-    INFERENCE = "INFERENCE"
-    OPINION = "OPINION"
 
 class EvaluatedLine(BaseModel):
     speaker: str = Field(description="Exact speaker from the draft (Do not change)")
     text: str = Field(description="Exact text from the draft (CRITICAL: Do not change a single word).")
 
     # Force the model to think and verify first
-    reasoning: str = Field(
-        description="Write a full English sentence explaining if the text contains hard metrics from the source. Do NOT output the category name here."
+    step_1_explanation_sentence: str = Field(
+        description="Write a full English sentence explaining your thought process. Example: 'The text contains the metric 0.186'."
     )
 
     # Now the model can accurately classify based on its own reasoning
-    category: LineCategory = Field(
-        description="Classification of the text groundedness. Must be one of: VERBATIM_FACT, INFERENCE, OPINION."
+    step_2_category: Literal["VERBATIM_FACT", "INFERENCE", "OPINION"] = Field(
+        description="Classify the text based on step 1. Must be VERBATIM_FACT if real metrics are present."
     )
 
     # Finally, extract the page number
-    page_citation: Optional[int] = Field(
-        description="If VERBATIM_FACT, extract strictly the number following the [Page X] tag at the start of the chunk. Else, output null."
+    step_3_page_citation: Optional[int] = Field(
+        description="If VERBATIM_FACT, extract strictly the number following the [Page X] tag. Else, output null."
     )
 
 class PodcastScript(BaseModel):

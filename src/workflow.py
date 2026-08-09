@@ -26,6 +26,10 @@ class GraphState(TypedDict):
     draft: NotRequired[str]
     full_script: Annotated[List[dict], operator.add]
 
+    # State trackers for self-correction loops
+    retry_count: int
+    feedback: NotRequired[str]
+
 class DraftLine(BaseModel):
     speaker: str = Field(description="Host A or Host B")
     text: str = Field(description="The spoken dialogue")
@@ -46,7 +50,7 @@ class PodcastOutline(BaseModel):
         max_length=3
     )
 
-# 1.2 Node: Generate the Episode Outline
+# Generate the Episode Outline
 def outline_node(state: GraphState):
     print("\n=== GENERATING PODCAST OUTLINE ===")
     topic = state["topic"]
@@ -66,7 +70,7 @@ def outline_node(state: GraphState):
         print(f"     {i+1}. {sub}")
         
     # Initialize the loop counter at 0, and the script as an empty list
-    return {"outline": response.subtopics, "current_index": 0, "full_script": []}
+    return {"outline": response.subtopics, "current_index": 0, "full_script": [], "retry_count": 0}
 
 def rewrite_node(state: GraphState):
     current_subtopic = state["outline"][state["current_index"]]
@@ -138,19 +142,27 @@ def retrieve_node(state: GraphState):
     return {"context": context_str}
 
 def draft_node(state: GraphState):
-    print("--- DRAFTING SCRIPT ---")
+    print(f"--- DRAFTING SCRIPT (Attempt {state.get('retry_count', 0) + 1}) ---")
     context = state.get("context", "")
-
-    llm =  ChatOllama(model="llama3.2", temperature=0.7)
+    feedback = state.get("feedback", "")
+    
+    llm = ChatOllama(model="llama3.2", temperature=0.7)
     structured_llm = llm.with_structured_output(DraftScript)
+    
+    # If we are in a correction loop, append the strict feedback
+    system_prompt = "You are a podcast writer. Write an engaging 4-line back-and-forth dialogue using the provided context."
+    if feedback:
+        print(f"  -> Applying Correction: {feedback}")
+        system_prompt += f"\n\nCRITICAL FEEDBACK FROM PREVIOUS DRAFT: {feedback}. You MUST fix this in your new draft."
+        
     prompt = ChatPromptTemplate.from_messages([
-        ("system", "You are a podcast writer. Write an engaging 4-line back-and-forth dialogue between 'Host A' and 'Host B' using the provided context. You must include at least one specific metric or fact. Do not repeat lines."),
-        ("human", "CONTEXT:\n{context}\n\nDRAFT SCRIPT:")
+        ("system", system_prompt),
+        ("human", "CONTEXT:\n{context}")
     ])
-
+    
     chain = prompt | structured_llm
     draft_response = cast(DraftScript, chain.invoke({"context": context}))
-
+    
     draft_str = (
         f"{draft_response.line_1.speaker}: {draft_response.line_1.text}\n"
         f"{draft_response.line_2.speaker}: {draft_response.line_2.text}\n"
@@ -164,20 +176,50 @@ def evaluate_node(state: GraphState):
     print("--- EVALUATING GROUNDEDNESS ---")
     context = state.get("context", "")
     draft = state.get("draft", "")
+    current_retries = state.get("retry_count", 0)
+    MAX_RETRIES = 2  # Our T_max computational budget
     
     chain = get_evaluator_chain()
     eval_response = cast(PodcastScript, chain.invoke({"context": context, "script": draft}))
     evaluated_lines = [line.dict() for line in eval_response.lines]
-
+    
+    # Agentic Evaluation Logic: Count valid facts
+    valid_facts = sum(
+        1 for line in evaluated_lines 
+        if line.get('step_2_category') == "VERBATIM_FACT" and line.get('step_3_page_citation') is not None
+    )
+    
+    # If we fail the threshold AND have retries left, trigger a loop
+    if valid_facts < 2 and current_retries < MAX_RETRIES:
+        print(f"  -> CRITIC FAILED SCRIPT: Only {valid_facts} valid citations found. Triggering Loop.")
+        feedback_msg = "Your previous draft lacked hard facts or page numbers. You must include at least two concrete metrics, numbers, or specific facts from the text."
+        return {"feedback": feedback_msg, "retry_count": current_retries + 1}
+        
+    # If we pass, OR we hit T_max, we forcefully accept the output and move to the next subtopic
+    if current_retries >= MAX_RETRIES:
+        print("  -> T_MAX REACHED: Forcing premature halt to prevent infinite loop.")
+    else:
+        print("  -> CRITIC PASSED SCRIPT.")
+        
     next_index = state["current_index"] + 1
-
-    return {"full_script": evaluated_lines, "current_index": next_index}
+    
+    # Reset retry count and clear feedback for the next subtopic
+    return {
+        "full_script": evaluated_lines, 
+        "current_index": next_index, 
+        "retry_count": 0, 
+        "feedback": ""
+    }
 
 def route_workflow(state: GraphState):
-    # If we haven't processed all subtopics, loop back to the rewrite node
+    # If the evaluator attached feedback and incremented the retry count, loop backward
+    if state.get("feedback") and state.get("retry_count", 0) > 0:
+        return "draft"
+        
+    # If we haven't processed all subtopics, loop forward
     if state["current_index"] < len(state["outline"]):
         return "rewrite"
-    # Otherwise, finish the graph
+        
     return END
 
 def build_workflow():
@@ -197,7 +239,7 @@ def build_workflow():
     workflow.add_conditional_edges(
         "evaluate", 
         route_workflow, 
-        {"rewrite": "rewrite", END: END}
+        {"rewrite": "rewrite", "draft": "draft", END: END}
     )
 
     return workflow.compile()

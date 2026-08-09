@@ -17,10 +17,11 @@ def generate_podcast_audio(script_lines, output_filename="podcast_output.wav"):
 
     pipeline = KPipeline(lang_code="a")
 
-    voice_map = {
-        "Host A": "af_sarah",
-        "Host B": "am_michael"
-    }
+    # Provide a pool of distinct Kokoro voices
+    available_voices = ["af_sarah", "am_michael", "af_bella", "am_adam", "af_nicole"]
+    
+    # Start with an empty map
+    dynamic_voice_map = {}
 
     final_audio = AudioSegment.empty()
     ding_sound = generate_ding()
@@ -30,12 +31,20 @@ def generate_podcast_audio(script_lines, output_filename="podcast_output.wav"):
         text = line.get('text', '')
         category = line.get('step_2_category', 'OPINION')
 
-        print(f"Generating Kokoro audio for {speaker}...")
+        # If we haven't seen this speaker before, assign them a unique voice
+        if speaker not in dynamic_voice_map:
+            if len(available_voices) > 0:
+                # Pop the first voice from the available list
+                dynamic_voice_map[speaker] = available_voices.pop(0)
+            else:
+                # Safe fallback if there are more than 5 speakers
+                dynamic_voice_map[speaker] = "af_heart" 
+                
+        voice = dynamic_voice_map[speaker]
 
-        # Get the assigned voice, default to 'af_heart' if speaker isn't mapped
-        voice = voice_map.get(speaker, "af_heart")
+        print(f"Generating Kokoro audio for {speaker} (Voice: {voice})...")
 
-        generator = pipeline(text, voice=voice, speed =1)
+        generator = pipeline(text, voice=voice, speed=1)
 
         for _, _, audio in generator:
             temp_filename = f"temp_line_{i}.wav"

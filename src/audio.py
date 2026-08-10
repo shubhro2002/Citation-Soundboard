@@ -23,8 +23,9 @@ def generate_podcast_audio(script_lines, output_filename="podcast_output.wav"):
     # Start with an empty map
     dynamic_voice_map = {}
 
-    final_audio = AudioSegment.empty()
+    master_speech = AudioSegment.empty()
     ding_sound = generate_ding()
+    short_pause = AudioSegment.silent(duration=600)
 
     for i, line in enumerate(script_lines):
         speaker = line.get('speaker', 'Host A')
@@ -48,22 +49,48 @@ def generate_podcast_audio(script_lines, output_filename="podcast_output.wav"):
 
         for _, _, audio in generator:
             temp_filename = f"temp_line_{i}.wav"
-
-            # Save the numpy array to a WAV file using soundfile at 24000Hz
             sf.write(temp_filename, cast(Any, audio), 24000)
-
-            # Load it back into our pydub workflow
             line_audio = AudioSegment.from_file(temp_filename, format="wav")
             
-            # 2. UPDATED: Check the newly mapped 'category' variable for the ding
             if category in ["VERBATIM_FACT", "INFERENCE"]: 
-                final_audio += ding_sound
-            final_audio += line_audio
-
+                master_speech += ding_sound
+                
+            master_speech += line_audio
             os.remove(temp_filename)  # Clean up the temporary file
-            
+
+        master_speech += short_pause    
         print(f"--- STITCHING COMPLETE ---")
         
+    print(f"\n--- APPLYING POST-PRODUCTION ---")
+
+    intro_padding = AudioSegment.silent(duration=2000)
+    outro_padding = AudioSegment.silent(duration=3000)
+    master_speech = intro_padding + master_speech + outro_padding
+
+    bg_music_path = "src/bg_music.mp3"
+    if os.path.exists(bg_music_path):
+        print("  -> Found 'bg_music.mp3'. Mixing and applying dynamic ducking...")
+        bg_music = AudioSegment.from_file(bg_music_path)
+
+        # Loop music if it's shorter than the podcast length
+        loops_needed = len(master_speech) // len(bg_music) + 1
+        bg_music = bg_music * loops_needed
+        bg_music = bg_music[:len(master_speech)] # Trim to exact podcast length
+
+        # Slice the music into 3 parts and adjust dB levels
+        intro_music = bg_music[:2000] - 5      # 2 seconds intro at normal volume
+        speech_music = bg_music[2000:-3000] - 18 # Drop volume heavily while hosts speak
+        outro_music = bg_music[-3000:] - 5     # 3 seconds outro fade back up
+
+        ducked_bg = intro_music + speech_music + outro_music
+        ducked_bg = ducked_bg.fade_in(1000).fade_out(2000)
+
+        final_audio = master_speech.overlay(ducked_bg)
+    else:
+        print("  -> No 'bg_music.mp3' found. Skipping background track.")
+        final_audio = master_speech
+
+    print(f"--- STITCHING COMPLETE ---")
     final_audio.export(output_filename, format="wav")
     print(f"Podcast saved locally to {output_filename}")
 

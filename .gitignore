@@ -16,7 +16,6 @@ storage/
 
 *.pdf
 *.wav
-*.mp3
 *.flac
 *.ogg
 output/

@@ -2,22 +2,24 @@ import os
 import sys
 from typing import cast
 
-from src.ingestion import ingest_pdf_to_index
+from src.ingestion import ingest_directory_to_index
 from src.workflow import build_workflow, GraphState
 from src.audio import generate_podcast_audio
 
-def run_citation_soundboard(pdf_path: str, topic: str, output_audio: str = "podcast_output.wav"):
+def run_citation_soundboard(data_dir: str, topic: str, output_audio: str = "podcast_output.wav"):
     print("=" * 50)
     print("       CITATION SOUNDBOARD: LOCAL PIPELINE       ")
     print("=" * 50)
 
     # Check if vector store index exists; if not, ingest the PDF
     if not os.path.exists("./storage"):
-        print(f"\n[1/3] No existing storage found. Ingesting: {pdf_path}...")
-        if not os.path.exists(pdf_path):
-            print(f"Error: Target PDF '{pdf_path}' does not exist.")
+        print(f"\n[1/3] No existing storage found. Ingesting directory: {data_dir}...")
+        if not os.path.exists(data_dir):
+            print(f"Error: Target data directory '{data_dir}' does not exist.")
             sys.exit(1)
-        ingest_pdf_to_index(pdf_path)
+            
+        # CHANGED: Call the new batch ingestion function
+        ingest_directory_to_index(data_dir)
     else:
         print("\n[1/3] Found existing storage index in ./storage. Skipping re-ingestion.")
 
@@ -51,9 +53,8 @@ def run_citation_soundboard(pdf_path: str, topic: str, output_audio: str = "podc
     generate_podcast_audio(final_script_data, "podcast_output.wav")
 
 if __name__ == "__main__":
-    # Example usage
-    SAMPLE_PDF = "./data/thesis.pdf"
-    TOPIC = "How did the FLAN-T5 780M and 3B models perform during the iterative self-correction loops?"
+    DATA_DIR = "./data"
+    TOPIC = "Can humans reliably detect misinformation?"
     OUTPUT_AUDIO = "podcast_output.wav"
 
-    run_citation_soundboard(SAMPLE_PDF, TOPIC, OUTPUT_AUDIO)
+    run_citation_soundboard(DATA_DIR, TOPIC, OUTPUT_AUDIO)

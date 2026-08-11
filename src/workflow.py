@@ -30,6 +30,9 @@ class GraphState(TypedDict):
     retry_count: int
     feedback: NotRequired[str]
 
+    # Memory of the previous segment
+    previous_context: NotRequired[str]
+
 class DraftLine(BaseModel):
     speaker: str = Field(description="Host A or Host B")
     text: str = Field(description="The spoken dialogue")
@@ -70,7 +73,7 @@ def outline_node(state: GraphState):
         print(f"     {i+1}. {sub}")
         
     # Initialize the loop counter at 0, and the script as an empty list
-    return {"outline": response.subtopics, "current_index": 0, "full_script": [], "retry_count": 0}
+    return {"outline": response.subtopics, "current_index": 0, "full_script": [], "retry_count": 0, "previous_context": ""}
 
 def rewrite_node(state: GraphState):
     current_subtopic = state["outline"][state["current_index"]]
@@ -145,19 +148,26 @@ def draft_node(state: GraphState):
     print(f"--- DRAFTING SCRIPT (Attempt {state.get('retry_count', 0) + 1}) ---")
     context = state.get("context", "")
     feedback = state.get("feedback", "")
+    previous_context = state.get("previous_context", "")
     
     llm = ChatOllama(model="llama3.2", temperature=0.7)
     structured_llm = llm.with_structured_output(DraftScript)
     
     # If we are in a correction loop, append the strict feedback
     system_prompt = "You are a podcast writer. Write an engaging 4-line back-and-forth dialogue using the provided context."
+    if previous_context:
+        system_prompt += (
+            f"\n\nPREVIOUS SEGMENT:\n{previous_context}\n\n"
+            "CRITICAL INSTRUCTION: The user just heard the PREVIOUS SEGMENT. The first line of your new draft MUST naturally transition "
+            "from that previous conversation into the new SOURCE CONTEXT. Do not introduce yourselves again."
+        )
     if feedback:
         print(f"  -> Applying Correction: {feedback}")
         system_prompt += f"\n\nCRITICAL FEEDBACK FROM PREVIOUS DRAFT: {feedback}. You MUST fix this in your new draft."
         
     prompt = ChatPromptTemplate.from_messages([
         ("system", system_prompt),
-        ("human", "CONTEXT:\n{context}")
+        ("human", "SOURCE CONTEXT:\n{context}")
     ])
     
     chain = prompt | structured_llm
@@ -202,13 +212,16 @@ def evaluate_node(state: GraphState):
         print("  -> CRITIC PASSED SCRIPT.")
         
     next_index = state["current_index"] + 1
+
+    saved_context = "\n".join([f"{line['speaker']}: {line['text']}" for line in evaluated_lines])
     
     # Reset retry count and clear feedback for the next subtopic
     return {
         "full_script": evaluated_lines, 
         "current_index": next_index, 
         "retry_count": 0, 
-        "feedback": ""
+        "feedback": "",
+        "previous_context": saved_context
     }
 
 def route_workflow(state: GraphState):

@@ -159,7 +159,9 @@ def draft_node(state: GraphState):
         system_prompt += (
             f"\n\nPREVIOUS SEGMENT:\n{previous_context}\n\n"
             "CRITICAL INSTRUCTION: The user just heard the PREVIOUS SEGMENT. The first line of your new draft MUST naturally transition "
-            "from that previous conversation into the new SOURCE CONTEXT. Do not introduce yourselves again."
+            "from that previous conversation into the new SOURCE CONTEXT. Do not introduce yourselves again.\n"
+            "RULE 1: The dialogue MUST alternate strictly back and forth between the two speakers. A speaker CANNOT speak twice in a row.\n"
+            "RULE 2: Do NOT repeat any statistics, percentages, or facts that were already stated in the PREVIOUS SEGMENT."
         )
     if feedback:
         print(f"  -> Applying Correction: {feedback}")

@@ -154,6 +154,8 @@ Start the Streamlit dashboard:
 streamlit run app.py
 ```
 
+![Web UI](images/web_UI.png)
+
 ### 3. Generate a Podcast
 
 1. Open the web interface (usually `http://localhost:8501`).
@@ -162,11 +164,17 @@ streamlit run app.py
 
 3. Click "💾 Save & Build Database". (This builds the Hierarchical Vector DB).
 
+![Database Build](images/build_index.png)
+
 4. Enter your desired topic in the main text box (e.g., *"How do large language models perform during iterative self-correction?"*).
 
 5. Click "🚀 Generate Podcast".
 
 6. Watch the swarm stream its thought process live. Once finished, read the cited script and hit play on the audio widget!
+
+![Working workflow](images/working.png)
+
+![Final](images/final_output.png)
 
 ## Future Upgrades (Cloud LLM Integration)
 

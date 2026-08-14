@@ -1,14 +1,15 @@
 import os
 import glob
 import pdfplumber
-from llama_index.core import Document, VectorStoreIndex, Settings
-from llama_index.core.node_parser import SentenceSplitter
+from llama_index.core import Document, VectorStoreIndex, Settings, StorageContext
+from llama_index.core.node_parser import HierarchicalNodeParser, get_leaf_nodes
+from llama_index.core.storage.docstore import SimpleDocumentStore
 from llama_index.embeddings.ollama import OllamaEmbedding
 from llama_index.llms.ollama import Ollama
 
 Settings.embed_model = OllamaEmbedding(model_name="nomic-embed-text")
 Settings.llm = Ollama(model="llama3.2", request_timeout=360.0)
-Settings.text_splitter = SentenceSplitter(chunk_size=512, chunk_overlap=50)
+node_parser = HierarchicalNodeParser.from_defaults(chunk_sizes=[2048, 512])
 
 def ingest_directory_to_index(data_dir: str = "./data", persist_dir: str = "./storage") -> VectorStoreIndex:
     """
@@ -43,10 +44,18 @@ def ingest_directory_to_index(data_dir: str = "./data", persist_dir: str = "./st
     print(f"\nExtracted a total of {len(documents)} pages across {len(pdf_files)} documents.")
     print("Building unified Vector Index (this may take a moment)...")
 
-    # Build one massive Index containing all papers
-    index = VectorStoreIndex.from_documents(documents)
+    nodes = node_parser.get_nodes_from_documents(documents)
+    leaf_nodes = get_leaf_nodes(nodes)
+
+    docstore = SimpleDocumentStore()
+    docstore.add_documents(nodes)
+    storage_context = StorageContext.from_defaults(docstore=docstore)
+
+    print("Building unified Vector Index on leaf nodes for pinpoint accuracy...")
+
+    index = VectorStoreIndex(leaf_nodes, storage_context=storage_context)
     index.storage_context.persist(persist_dir=persist_dir)
-    print(f"Index successfully persisted to {persist_dir}")
+    print(f"Hierarchical Index successfully persisted to {persist_dir}")
     
     return index
 

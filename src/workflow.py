@@ -9,8 +9,7 @@ from llama_index.embeddings.ollama import OllamaEmbedding
 from llama_index.llms.ollama import Ollama
 from langchain_ollama import ChatOllama
 from langchain_core.prompts import ChatPromptTemplate
-from llama_index.retrievers.bm25 import BM25Retriever
-from llama_index.core.retrievers import QueryFusionRetriever
+from llama_index.core.retrievers import AutoMergingRetriever
 
 from .evaluator import get_evaluator_chain, PodcastScript
 
@@ -104,24 +103,17 @@ def retrieve_node(state: GraphState):
     
     # Initialize Dense Vector Retriever
     vector_retriever = index.as_retriever(similarity_top_k=5)
-    
-    # Initialize Sparse BM25 Retriever
-    bm25_retriever = BM25Retriever.from_defaults(
-        docstore=index.docstore, 
-        similarity_top_k=5
-    )
-    
-    # Combine via Reciprocal Rank Fusion
-    hybrid_retriever = QueryFusionRetriever(
-        [vector_retriever, bm25_retriever],
-        similarity_top_k=5,
-        num_queries=1,
-        mode="reciprocal_rerank",  # type: ignore
-        use_async=False,
+
+    # Wrap the retriever in an AutoMergingRetriever to ensure we get unique nodes
+    auto_merging_retriever = AutoMergingRetriever(
+        vector_retriever, # type: ignore
+        storage_context=storage_context,
+        simple_ratio_thresh=0.1,
+        verbose=True  # Prints in terminal when child nodes get merged into parent nodes
     )
     
     # Execute Hybrid Search
-    nodes = hybrid_retriever.retrieve(query)
+    nodes = auto_merging_retriever.retrieve(query)
     
     context_str = ""
     print("\n--- DEBUG RETRIEVED CONTEXT ---")

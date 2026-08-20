@@ -73,10 +73,10 @@ graph TD
 .
 ├── app.py                  # Streamlit frontend dashboard
 ├── main.py                 # CLI execution script (Alternative to Streamlit)
-├── bg_music.mp3            # (User added) Background audio track
 ├── src/
 │   ├── workflow.py         # LangGraph nodes, state, and Auto-Merging Retrieval
 │   ├── ingestion.py        # PDF parsing and Hierarchical Vector DB creation
+│   ├── bg_music.mp3            # (User added) Background audio track
 │   └── audio.py            # Kokoro TTS generation & Pydub post-production
 ├── data/                   # Directory where uploaded PDFs are stored
 └── storage/                # Auto-generated LlamaIndex database
